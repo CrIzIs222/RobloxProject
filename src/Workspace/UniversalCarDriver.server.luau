@@ -48,18 +48,10 @@ local turnSignalMode = "None"
 local blinkState = false
 local blinkTimer = 0
 
--- Internal lights inside headlight and taillight meshes
-local attFL = hl and hl:FindFirstChild("TurnAttFL")
-local lightFL = attFL and attFL:FindFirstChild("AmberLight")
-
-local attFR = hl and hl:FindFirstChild("TurnAttFR")
-local lightFR = attFR and attFR:FindFirstChild("AmberLight")
-
-local attRL = tl and tl:FindFirstChild("TurnAttRL")
-local lightRL = attRL and attRL:FindFirstChild("AmberLight")
-
-local attRR = tl and tl:FindFirstChild("TurnAttRR")
-local lightRR = attRR and attRR:FindFirstChild("AmberLight")
+local stripFL = hl and hl:FindFirstChild("TurnSignalFL")
+local stripFR = hl and hl:FindFirstChild("TurnSignalFR")
+local stripRL = tl and tl:FindFirstChild("TurnSignalRL")
+local stripRR = tl and tl:FindFirstChild("TurnSignalRR")
 
 local function setHeadlights(on)
     headlightsOn = on
@@ -82,11 +74,33 @@ local function setHeadlights(on)
 end
 
 local function setSignalVisuals(leftOn, rightOn)
-    if lightFL then lightFL.Enabled = leftOn end
-    if lightRL then lightRL.Enabled = leftOn end
+    local amberActive = Color3.fromRGB(255, 180, 0)
+    local amberIdleFront = Color3.fromRGB(120, 75, 10)
+    local amberIdleRear = Color3.fromRGB(120, 60, 10)
     
-    if lightFR then lightFR.Enabled = rightOn end
-    if lightRR then lightRR.Enabled = rightOn end
+    -- Left Side (Driver Side)
+    if stripFL then
+        stripFL.Transparency = leftOn and 0 or 0.85
+        stripFL.Color = leftOn and amberActive or amberIdleFront
+        if stripFL:FindFirstChild("AmberLight") then stripFL.AmberLight.Enabled = leftOn end
+    end
+    if stripRL then
+        stripRL.Transparency = leftOn and 0 or 0.85
+        stripRL.Color = leftOn and amberActive or amberIdleRear
+        if stripRL:FindFirstChild("AmberLight") then stripRL.AmberLight.Enabled = leftOn end
+    end
+    
+    -- Right Side (Passenger Side)
+    if stripFR then
+        stripFR.Transparency = rightOn and 0 or 0.85
+        stripFR.Color = rightOn and amberActive or amberIdleFront
+        if stripFR:FindFirstChild("AmberLight") then stripFR.AmberLight.Enabled = rightOn end
+    end
+    if stripRR then
+        stripRR.Transparency = rightOn and 0 or 0.85
+        stripRR.Color = rightOn and amberActive or amberIdleRear
+        if stripRR:FindFirstChild("AmberLight") then stripRR.AmberLight.Enabled = rightOn end
+    end
 end
 
 remote.OnServerEvent:Connect(function(player, action)
