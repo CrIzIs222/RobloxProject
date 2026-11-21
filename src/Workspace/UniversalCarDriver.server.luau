@@ -6,7 +6,6 @@ local body = car:FindFirstChild("Body")
 local hl = body and body:FindFirstChild("headlights")
 local tl = body and body:FindFirstChild("tail_light")
 local beam = hl and hl:FindFirstChild("HeadlightBeam")
-local signalsFolder = car:FindFirstChild("TurnSignals")
 local promptLoc = seat and seat:FindFirstChild("PromptLocation")
 local prompt = promptLoc and promptLoc:FindFirstChildOfClass("ProximityPrompt")
 
@@ -33,13 +32,11 @@ local sndTick = effects and effects:FindFirstChild("TurnTickSound")
 if sndIdle then sndIdle.Looped = true end
 if sndAccel then sndAccel.Looped = true end
 
--- Speed Limiter & Reduced Realistic Acceleration
--- Max speed strictly capped at ~120 km/h (75 rad/s)
+-- Speed limiter & realistic acceleration
 local maxForwardSpeed = 75
 local maxReverseSpeed = 30
 local currentVelocity = 0
 
--- Reduced acceleration rate (0-100 km/h in ~6.5 seconds)
 local accelRate = 12
 local brakeRate = 45
 local coastRate = 10
@@ -48,9 +45,14 @@ local currentDriver = nil
 
 -- Light States
 local headlightsOn = false
-local turnSignalMode = "None" -- "Left", "Right", "Hazard", "None"
+local turnSignalMode = "None"
 local blinkState = false
 local blinkTimer = 0
+
+local turnFL = hl and hl:FindFirstChild("TurnSignalFL")
+local turnFR = hl and hl:FindFirstChild("TurnSignalFR")
+local turnRL = tl and tl:FindFirstChild("TurnSignalRL")
+local turnRR = tl and tl:FindFirstChild("TurnSignalRR")
 
 local function setHeadlights(on)
     headlightsOn = on
@@ -72,38 +74,39 @@ local function setHeadlights(on)
     end
 end
 
+-- Embedded Turn Signal Visuals in Headlights & Taillights
 local function setSignalVisuals(leftOn, rightOn)
-    if not signalsFolder then return end
-    local fl = signalsFolder:FindFirstChild("FrontLeft")
-    local rl = signalsFolder:FindFirstChild("RearLeft")
-    local fr = signalsFolder:FindFirstChild("FrontRight")
-    local rr = signalsFolder:FindFirstChild("RearRight")
+    local amberNeon = Color3.fromRGB(255, 175, 0)
+    local darkAmber = Color3.fromRGB(50, 40, 20)
+    local darkRed = Color3.fromRGB(60, 20, 20)
     
-    local amberOn = Color3.fromRGB(255, 175, 0)
-    local amberOff = Color3.fromRGB(90, 60, 20)
-    
-    if fl and rl then
-        fl.Material = leftOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        fl.Color = leftOn and amberOn or amberOff
-        fl.BlinkLight.Enabled = leftOn
-        
-        rl.Material = leftOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        rl.Color = leftOn and amberOn or amberOff
-        rl.BlinkLight.Enabled = leftOn
+    if turnFL then
+        turnFL.Material = leftOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        turnFL.Color = leftOn and amberNeon or darkAmber
+        turnFL.Transparency = leftOn and 0 or 0.6
+        if turnFL:FindFirstChild("AmberLight") then turnFL.AmberLight.Enabled = leftOn end
+    end
+    if turnRL then
+        turnRL.Material = leftOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        turnRL.Color = leftOn and amberNeon or darkRed
+        turnRL.Transparency = leftOn and 0 or 0.6
+        if turnRL:FindFirstChild("AmberLight") then turnRL.AmberLight.Enabled = leftOn end
     end
     
-    if fr and rr then
-        fr.Material = rightOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        fr.Color = rightOn and amberOn or amberOff
-        fr.BlinkLight.Enabled = rightOn
-        
-        rr.Material = rightOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        rr.Color = rightOn and amberOn or amberOff
-        rr.BlinkLight.Enabled = rightOn
+    if turnFR then
+        turnFR.Material = rightOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        turnFR.Color = rightOn and amberNeon or darkAmber
+        turnFR.Transparency = rightOn and 0 or 0.6
+        if turnFR:FindFirstChild("AmberLight") then turnFR.AmberLight.Enabled = rightOn end
+    end
+    if turnRR then
+        turnRR.Material = rightOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        turnRR.Color = rightOn and amberNeon or darkRed
+        turnRR.Transparency = rightOn and 0 or 0.6
+        if turnRR:FindFirstChild("AmberLight") then turnRR.AmberLight.Enabled = rightOn end
     end
 end
 
--- Remote command listener for L, Q, E, X
 remote.OnServerEvent:Connect(function(player, action)
     if not currentDriver or game:GetService("Players"):GetPlayerFromCharacter(currentDriver) ~= player then
         return
@@ -202,7 +205,6 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
         end
         if steer then steer.TargetPosition = 0 end
         
-        -- Safe exit to the right of driver door
         if charToTeleport and charToTeleport:FindFirstChild("HumanoidRootPart") then
             task.delay(0.06, function()
                 if charToTeleport and charToTeleport:FindFirstChild("HumanoidRootPart") then
@@ -214,12 +216,11 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
     end
 end)
 
--- Main Physics and Blink Loop
+-- Heartbeat Physics & Blink Loop
 game:GetService("RunService").Heartbeat:Connect(function(dt)
-    -- Turn signal blinking timer
     if turnSignalMode ~= "None" then
         blinkTimer = blinkTimer + dt
-        if blinkTimer >= 0.45 then
+        if blinkTimer >= 0.42 then
             blinkTimer = 0
             blinkState = not blinkState
             if sndTick and seat.Occupant then
@@ -242,12 +243,10 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
         local throttle = seat.ThrottleFloat
         local steerFloat = seat.SteerFloat
         
-        -- Steering (A=Left, D=Right)
         if steer then
             steer.TargetPosition = -steerFloat * maxSteer
         end
         
-        -- Gradual Acceleration with strict speed limiter
         if throttle > 0 then
             if currentVelocity < 0 then
                 currentVelocity = math.min(currentVelocity + brakeRate * dt, 0)
@@ -268,7 +267,6 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
             end
         end
         
-        -- Apply to motors
         local torque = (throttle ~= 0) and 40000 or 15000
         for _, m in ipairs(motors) do
             if m then
@@ -277,7 +275,6 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
             end
         end
         
-        -- Audio Smooth Lerp
         local absSpeed = math.abs(currentVelocity)
         local ratio = math.clamp(absSpeed / maxForwardSpeed, 0, 1)
         

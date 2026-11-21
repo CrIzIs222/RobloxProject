@@ -25,19 +25,18 @@ local headIcon = dashIcons:WaitForChild("HeadlightIcon")
 local currentSeat = nil
 local maxSpeed = 140
 
-local dimColor = Color3.fromRGB(60, 65, 75)
+local dimColor = Color3.fromRGB(50, 55, 65)
 local activeColor = Color3.fromRGB(250, 250, 255)
-local greenColor = Color3.fromRGB(0, 255, 120)
-local yellowColor = Color3.fromRGB(255, 230, 80)
+local greenColor = Color3.fromRGB(0, 255, 130)
+local blueLightColor = Color3.fromRGB(0, 190, 255)
 
 local currentSignal = "None"
 local blinkState = false
 local blinkTimer = 0
 
--- Remote Event Listeners from Server
 remote.OnClientEvent:Connect(function(action, value)
     if action == "Headlights" then
-        headIcon.TextColor3 = value and yellowColor or dimColor
+        headIcon.TextColor3 = value and blueLightColor or dimColor
     elseif action == "TurnSignal" then
         currentSignal = value
         if currentSignal == "None" then
@@ -47,7 +46,6 @@ remote.OnClientEvent:Connect(function(action, value)
     end
 end)
 
--- Keyboard Input for L, Q, E, X
 UserInputService.InputBegan:Connect(function(input, processed)
     if not currentSeat or processed then return end
     
@@ -119,10 +117,9 @@ end
 player.CharacterAdded:Connect(hookCharacter)
 
 RunService.RenderStepped:Connect(function(dt)
-    -- Blink dashboard turn signal icons
     if currentSignal ~= "None" then
         blinkTimer = blinkTimer + dt
-        if blinkTimer >= 0.45 then
+        if blinkTimer >= 0.42 then
             blinkTimer = 0
             blinkState = not blinkState
             
