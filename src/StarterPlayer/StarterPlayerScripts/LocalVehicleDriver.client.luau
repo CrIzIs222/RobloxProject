@@ -7,8 +7,8 @@ local player = Players.LocalPlayer
 local WHEEL_RADIUS = 1.5
 local MAX_FORWARD_SPEED = 82 -- studs/s (~131 km/h)
 local MAX_REVERSE_SPEED = 26 -- studs/s (~42 km/h)
-local ACCEL_RATE = 13.5 -- studs/s^2 (~4.6 sec 0-100 km/h)
-local REVERSE_ACCEL_RATE = 10.0
+local ACCEL_RATE = 23.0 -- studs/s^2 (~2.7 sec 0-100 km/h)
+local REVERSE_ACCEL_RATE = 13.0
 
 local currentSeat = nil
 local currentCar = nil
@@ -47,7 +47,7 @@ local function bindVehicle(seat)
 
     for _, m in ipairs(motors) do
         if m then
-            m.MotorMaxAngularAcceleration = 18
+            m.MotorMaxAngularAcceleration = 38
         end
     end
     if steerPrismatic then
@@ -124,10 +124,10 @@ RunService.RenderStepped:Connect(function(dt)
                 currentTargetSpeed = forwardSpeed
             end
             currentTargetSpeed = math.min(currentTargetSpeed + ACCEL_RATE * throttle * dt, MAX_FORWARD_SPEED)
-            currentTargetSpeed = math.min(currentTargetSpeed, forwardSpeed + 8)
+            currentTargetSpeed = math.min(currentTargetSpeed, forwardSpeed + 14)
             targetAngularVel = currentTargetSpeed / WHEEL_RADIUS
-            -- Soft launch torque that builds smoothly without jerking
-            targetTorque = 8500 + (speedRatio * 6500)
+            -- Sporty responsive launch torque
+            targetTorque = 13500 + (speedRatio * 6500)
         end
     elseif throttle < -0.05 then
         if forwardSpeed > 2.5 then
