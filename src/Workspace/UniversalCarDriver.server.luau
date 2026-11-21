@@ -1,13 +1,19 @@
 local car = script.Parent
+local chassis = car:FindFirstChild("Chassis")
 local seat = car:FindFirstChildWhichIsA("VehicleSeat", true)
+local seatFR = chassis and chassis:FindFirstChild("SeatFR")
 local constraints = car:FindFirstChild("Constraints")
 local effects = car:FindFirstChild("Effects")
 local body = car:FindFirstChild("Body")
 local hl = body and body:FindFirstChild("headlights")
 local tl = body and body:FindFirstChild("tail_light")
 local beam = hl and hl:FindFirstChild("HeadlightBeam")
+
 local promptLoc = seat and seat:FindFirstChild("PromptLocation")
-local prompt = promptLoc and promptLoc:FindFirstChildOfClass("ProximityPrompt")
+local promptDriver = promptLoc and promptLoc:FindFirstChildOfClass("ProximityPrompt")
+
+local promptLocFR = seatFR and seatFR:FindFirstChild("PromptLocation")
+local promptPassenger = promptLocFR and promptLocFR:FindFirstChildOfClass("ProximityPrompt")
 
 local remote = game:GetService("ReplicatedStorage"):WaitForChild("CarControlRemote")
 
@@ -28,9 +34,23 @@ local sndStop = effects and effects:FindFirstChild("EngineStop")
 local sndDoor = effects and effects:FindFirstChild("OpenCloseDoor")
 local sndSwitch = effects and effects:FindFirstChild("LightSwitchSound")
 local sndTurnTick = effects and effects:FindFirstChild("TurnTickSound")
+local sndSkid = effects and effects:FindFirstChild("TireSkid")
 
 if sndIdle then sndIdle.Looped = true end
 if sndAccel then sndAccel.Looped = true end
+if sndSkid then sndSkid.Looped = true end
+
+-- Drift Components (Rear Wheels & Smoke)
+local srl = chassis and chassis:FindFirstChild("SuspensionRL")
+local srr = chassis and chassis:FindFirstChild("SuspensionRR")
+local rearWheelL = srl and srl:FindFirstChild("Wheel")
+local rearWheelR = srr and srr:FindFirstChild("Wheel")
+local smokeL = rearWheelL and rearWheelL:FindFirstChild("DriftSmoke")
+local smokeR = rearWheelR and rearWheelR:FindFirstChild("DriftSmoke")
+
+local isDrifting = false
+local defaultRearFriction = 2.0
+local driftRearFriction = 0.32
 
 local maxForwardSpeed = 75
 local maxReverseSpeed = 30
@@ -39,8 +59,11 @@ local currentVelocity = 0
 local accelRate = 12
 local brakeRate = 45
 local coastRate = 10
-local maxSteer = 0.55
+local defaultSteer = 0.55
+local driftSteer = 0.74
+
 local currentDriver = nil
+local currentPassenger = nil
 
 local headlightsOn = false
 local turnSignalMode = "None"
@@ -95,7 +118,32 @@ local function setSignalVisuals(leftOn, rightOn)
     updateSingleSignal(partRR, lightRR, rightOn)
 end
 
-remote.OnServerEvent:Connect(function(player, action)
+local function setDriftState(active)
+    isDrifting = active
+    local friction = active and driftRearFriction or defaultRearFriction
+    local fWeight = 3.0
+    if rearWheelL then
+        rearWheelL.CustomPhysicalProperties = PhysicalProperties.new(2.0, friction, 0.1, fWeight, 100)
+    end
+    if rearWheelR then
+        rearWheelR.CustomPhysicalProperties = PhysicalProperties.new(2.0, friction, 0.1, fWeight, 100)
+    end
+    if smokeL then smokeL.Enabled = active end
+    if smokeR then smokeR.Enabled = active end
+
+    if active then
+        if sndSkid and not sndSkid.IsPlaying then
+            sndSkid.Volume = 0.5
+            sndSkid:Play()
+        end
+    else
+        if sndSkid and sndSkid.IsPlaying then
+            sndSkid:Stop()
+        end
+    end
+end
+
+remote.OnServerEvent:Connect(function(player, action, value)
     if not currentDriver or game:GetService("Players"):GetPlayerFromCharacter(currentDriver) ~= player then
         return
     end
@@ -132,11 +180,14 @@ remote.OnServerEvent:Connect(function(player, action)
             sndTurnTick:Play()
         end
         remote:FireClient(player, "TurnSignal", turnSignalMode)
+    elseif action == "Drift" then
+        setDriftState(value == true)
     end
 end)
 
-if prompt then
-    prompt.Triggered:Connect(function(player)
+-- Driver ProximityPrompt
+if promptDriver then
+    promptDriver.Triggered:Connect(function(player)
         local char = player.Character
         local hum = char and char:FindFirstChild("Humanoid")
         if hum and not seat.Occupant then
@@ -145,12 +196,24 @@ if prompt then
     end)
 end
 
+-- Passenger ProximityPrompt
+if promptPassenger and seatFR then
+    promptPassenger.Triggered:Connect(function(player)
+        local char = player.Character
+        local hum = char and char:FindFirstChild("Humanoid")
+        if hum and not seatFR.Occupant then
+            seatFR:Sit(hum)
+        end
+    end)
+end
+
+-- Driver Seating
 seat:GetPropertyChangedSignal("Occupant"):Connect(function()
     local occupant = seat.Occupant
     if occupant and occupant:IsA("Humanoid") then
         local char = occupant.Parent
         currentDriver = char
-        if prompt then prompt.Enabled = false end
+        if promptDriver then promptDriver.Enabled = false end
         
         if sndDoor then sndDoor:Play() end
         if sndStart then
@@ -186,12 +249,13 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
         turnSignalMode = "None"
         setSignalVisuals(false, false)
         setHeadlights(false)
+        setDriftState(false)
         
         if sndIdle then sndIdle:Stop() end
-        if sndAccel then sndAccel.Stop() end
+        if sndAccel then sndAccel:Stop() end
         if sndStop then sndStop:Play() end
         if sndDoor then sndDoor:Play() end
-        if prompt then prompt.Enabled = true end
+        if promptDriver then promptDriver.Enabled = true end
         
         for _, m in ipairs(motors) do
             if m then
@@ -212,6 +276,34 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
         end
     end
 end)
+
+-- Passenger Seating
+if seatFR then
+    seatFR:GetPropertyChangedSignal("Occupant"):Connect(function()
+        local occupant = seatFR.Occupant
+        if occupant and occupant:IsA("Humanoid") then
+            local char = occupant.Parent
+            currentPassenger = char
+            if promptPassenger then promptPassenger.Enabled = false end
+            if sndDoor then sndDoor:Play() end
+        else
+            local charToExit = currentPassenger
+            currentPassenger = nil
+            if promptPassenger then promptPassenger.Enabled = true end
+            if sndDoor then sndDoor:Play() end
+            
+            -- Smooth and safe exit teleportation outside beside passenger door
+            if charToExit and charToExit:FindFirstChild("HumanoidRootPart") then
+                task.delay(0.06, function()
+                    if charToExit and charToExit:FindFirstChild("HumanoidRootPart") then
+                        local exitCFrame = seatFR.CFrame * CFrame.new(5.5, 0.5, 0)
+                        charToExit:PivotTo(exitCFrame)
+                    end
+                end)
+            end
+        end
+    end)
+end
 
 game:GetService("RunService").Heartbeat:Connect(function(dt)
     if turnSignalMode ~= "None" then
@@ -239,8 +331,10 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
         local throttle = seat.ThrottleFloat
         local steerFloat = seat.SteerFloat
         
+        -- Steering angle (boosted during drift for counter-steering)
+        local activeMaxSteer = isDrifting and driftSteer or defaultSteer
         if steer then
-            steer.TargetPosition = -steerFloat * maxSteer
+            steer.TargetPosition = -steerFloat * activeMaxSteer
         end
         
         if throttle > 0 then
@@ -274,6 +368,7 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
         local absSpeed = math.abs(currentVelocity)
         local ratio = math.clamp(absSpeed / maxForwardSpeed, 0, 1)
         
+        -- Dynamic Engine Sound modulation
         local targetAccelVol = 0.05
         local targetAccelPitch = 0.75
         local targetIdleVol = 0.35
@@ -300,6 +395,14 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
         end
         if sndIdle and sndIdle.IsPlaying then
             sndIdle.Volume = sndIdle.Volume + (targetIdleVol - sndIdle.Volume) * math.clamp(dt * 4, 0, 1)
+        end
+        
+        -- Drift skid sound pitch & volume scaling
+        if isDrifting and sndSkid and sndSkid.IsPlaying then
+            local skidVol = math.clamp(0.2 + ratio * 0.5, 0.2, 0.7)
+            local skidPitch = math.clamp(0.85 + ratio * 0.4, 0.85, 1.25)
+            sndSkid.Volume = sndSkid.Volume + (skidVol - sndSkid.Volume) * math.clamp(dt * 6, 0, 1)
+            sndSkid.PlaybackSpeed = sndSkid.PlaybackSpeed + (skidPitch - sndSkid.PlaybackSpeed) * math.clamp(dt * 5, 0, 1)
         end
     end
 end)

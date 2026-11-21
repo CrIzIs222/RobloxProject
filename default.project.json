@@ -8,6 +8,15 @@
         "$path": "src/StarterGui/CarSpeedometerGui"
       }
     },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "CustomPromptController": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/CustomPromptController.client.luau"
+        }
+      }
+    },
     "Workspace": {
       "$className": "Workspace",
       "UniversalCarDriver": {
