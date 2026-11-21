@@ -11,6 +11,7 @@ local MAX_FORWARD_SPEED = 82 -- studs/s (~131 km/h)
 local MAX_REVERSE_SPEED = 26 -- studs/s (~42 km/h)
 local ACCEL_RATE = 23.0 -- studs/s^2 (~2.7 sec 0-100 km/h)
 local REVERSE_ACCEL_RATE = 13.0
+local COAST_DECEL_RATE = 4.2 -- studs/s^2 (gentle natural coasting ~6.7 km/h per sec)
 local BASE_SPRING_LEN = 2.45
 
 local currentSeat = nil
@@ -184,9 +185,15 @@ RunService.RenderStepped:Connect(function(dt)
         targetAngularVel = 0
         targetTorque = 36000
     elseif isNeutral then
-        currentTargetSpeed = forwardSpeed
-        targetAngularVel = 0
-        targetTorque = 350
+        if currentTargetSpeed > 0 then
+            currentTargetSpeed = math.min(currentTargetSpeed, math.max(0, forwardSpeed + 1.5))
+            currentTargetSpeed = math.max(0, currentTargetSpeed - (COAST_DECEL_RATE * 0.75) * dt)
+        elseif currentTargetSpeed < 0 then
+            currentTargetSpeed = math.max(currentTargetSpeed, math.min(0, forwardSpeed - 1.5))
+            currentTargetSpeed = math.min(0, currentTargetSpeed + (COAST_DECEL_RATE * 0.75) * dt)
+        end
+        targetAngularVel = currentTargetSpeed / WHEEL_RADIUS
+        targetTorque = (math.abs(currentTargetSpeed) > 0.5) and 3800 or 200
     elseif throttle > 0.05 then
         if forwardSpeed < -2.5 then
             currentTargetSpeed = 0
@@ -216,9 +223,16 @@ RunService.RenderStepped:Connect(function(dt)
             targetTorque = 10000
         end
     else
-        currentTargetSpeed = forwardSpeed
-        targetAngularVel = 0
-        targetTorque = 350
+        -- Smooth natural coasting when releasing W / S
+        if currentTargetSpeed > 0 then
+            currentTargetSpeed = math.min(currentTargetSpeed, math.max(0, forwardSpeed + 1.5))
+            currentTargetSpeed = math.max(0, currentTargetSpeed - COAST_DECEL_RATE * dt)
+        elseif currentTargetSpeed < 0 then
+            currentTargetSpeed = math.max(currentTargetSpeed, math.min(0, forwardSpeed - 1.5))
+            currentTargetSpeed = math.min(0, currentTargetSpeed + COAST_DECEL_RATE * dt)
+        end
+        targetAngularVel = currentTargetSpeed / WHEEL_RADIUS
+        targetTorque = (math.abs(currentTargetSpeed) > 0.5) and 4200 or 250
     end
 
     -- 3. Active Torque Vectoring Differential & RWD-Biased Sports AWD Split
