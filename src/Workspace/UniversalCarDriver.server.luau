@@ -72,6 +72,7 @@ local maxForwardSpeed = 82
 local isHandbrake = true
 local isNeutral = false
 local isDrifting = false
+local isSpaceBraking = false
 local maxHealth = 100
 local health = 100
 
@@ -172,6 +173,16 @@ end
 lockParkedWheels()
 
 remote.OnServerEvent:Connect(function(player, action, value)
+    if action == "ExitCar" then
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and (hum.SeatPart == seat or hum.SeatPart == seatFR) then
+            hum.Sit = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+        return
+    end
+
     if not currentDriver or Players:GetPlayerFromCharacter(currentDriver) ~= player then
         return
     end
@@ -210,6 +221,8 @@ remote.OnServerEvent:Connect(function(player, action, value)
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     elseif action == "Drift" then
         isDrifting = (value == true)
+    elseif action == "SpaceBrake" then
+        isSpaceBraking = (value == true)
     elseif action == "ToggleHandbrake" then
         isHandbrake = not isHandbrake
         if isHandbrake then isNeutral = false end
@@ -416,8 +429,8 @@ RunService.Heartbeat:Connect(function(dt)
         end
         lastSpeed = absSpeed
 
-        -- 2. Tire Smoke & Skid Marks (on drift or hard braking at speed)
-        local isHardBraking = (throttle < -0.5) and (absSpeed > 22) and not isNeutral and not isHandbrake
+        -- 2. Tire Smoke & Skid Marks (on drift, Space brake, or hard S braking at speed)
+        local isHardBraking = ((throttle < -0.5) or isSpaceBraking) and (absSpeed > 15) and not isNeutral and not isHandbrake
         local showSmoke = (isDrifting and absSpeed > 8) or isHardBraking
         local showTrail = (isDrifting and absSpeed > 6) or isHardBraking
         setTireEffects(showSmoke, showTrail, isDrifting)

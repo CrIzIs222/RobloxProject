@@ -1,7 +1,9 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local remote = ReplicatedStorage:WaitForChild("CarControlRemote")
 local player = Players.LocalPlayer
 
 local WHEEL_RADIUS = 1.5
@@ -12,23 +14,41 @@ local REVERSE_ACCEL_RATE = 13.0
 
 local currentSeat = nil
 local currentCar = nil
+local currentHumanoid = nil
 local motors = {}
 local steerPrismatic = nil
 local currentSteer = 0
 local currentTargetSpeed = 0
+local wasSpaceBraking = false
 
 local function clearVehicle()
+    if currentHumanoid then
+        currentHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+    end
     currentSeat = nil
     currentCar = nil
     motors = {}
     steerPrismatic = nil
     currentSteer = 0
     currentTargetSpeed = 0
+    wasSpaceBraking = false
 end
 
-local function bindVehicle(seat)
+local function bindVehicle(seat, humanoid)
     clearVehicle()
-    if not seat or not seat:IsA("VehicleSeat") then return end
+    if not seat then return end
+
+    currentHumanoid = humanoid
+    if currentHumanoid then
+        -- Disable Spacebar jumping out of the car; F is used to exit
+        currentHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+    end
+
+    if not seat:IsA("VehicleSeat") then
+        -- Passenger seat: only F-to-exit & jump-disable needed
+        currentSeat = seat
+        return
+    end
 
     local chassis = seat.Parent
     local car = chassis and chassis.Parent
@@ -60,17 +80,18 @@ local function hookCharacter(char)
     clearVehicle()
     local humanoid = char:WaitForChild("Humanoid", 10)
     if not humanoid then return end
+    currentHumanoid = humanoid
 
     humanoid.Seated:Connect(function(active, seat)
-        if active and seat and seat:IsA("VehicleSeat") then
-            bindVehicle(seat)
+        if active and seat and (seat:IsA("VehicleSeat") or seat.Name == "SeatFR") then
+            bindVehicle(seat, humanoid)
         else
             clearVehicle()
         end
     end)
 
-    if humanoid.SeatPart and humanoid.SeatPart:IsA("VehicleSeat") then
-        bindVehicle(humanoid.SeatPart)
+    if humanoid.SeatPart and (humanoid.SeatPart:IsA("VehicleSeat") or humanoid.SeatPart.Name == "SeatFR") then
+        bindVehicle(humanoid.SeatPart, humanoid)
     end
 end
 
@@ -78,6 +99,19 @@ if player.Character then
     hookCharacter(player.Character)
 end
 player.CharacterAdded:Connect(hookCharacter)
+
+-- Exit car on F key
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not currentSeat then return end
+    if UserInputService:GetFocusedTextBox() then return end
+
+    if input.KeyCode == Enum.KeyCode.F then
+        if currentHumanoid then
+            currentHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+        end
+        remote:FireServer("ExitCar")
+    end
+end)
 
 RunService.RenderStepped:Connect(function(dt)
     if not currentSeat or not currentSeat.Parent or not currentCar then return end
@@ -92,8 +126,14 @@ RunService.RenderStepped:Connect(function(dt)
     local isHandbrake = currentCar:GetAttribute("Handbrake") == true
     local isNeutral = currentCar:GetAttribute("Neutral") == true
     local isBroken = currentCar:GetAttribute("Broken") == true
+    local isSpaceBraking = UserInputService:IsKeyDown(Enum.KeyCode.Space)
     local isDrifting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
         or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+
+    if isSpaceBraking ~= wasSpaceBraking then
+        wasSpaceBraking = isSpaceBraking
+        remote:FireServer("SpaceBrake", isSpaceBraking)
+    end
 
     -- 1. Smooth Speed-Sensitive Steering
     local rawSteer = currentSeat.SteerFloat
@@ -105,7 +145,7 @@ RunService.RenderStepped:Connect(function(dt)
         steerPrismatic.TargetPosition = -currentSteer * maxSteerAngle
     end
 
-    -- 2. Realistic Progressive Acceleration, Braking, Reverse & Natural Coasting
+    -- 2. Realistic Progressive Acceleration, Smooth Space Braking, Reverse & Natural Coasting
     local throttle = currentSeat.ThrottleFloat
     local targetAngularVel = 0
     local targetTorque = 350
@@ -114,36 +154,35 @@ RunService.RenderStepped:Connect(function(dt)
         currentTargetSpeed = 0
         targetAngularVel = 0
         targetTorque = 120000
+    elseif isSpaceBraking then
+        -- Smooth progressive brake on Spacebar
+        currentTargetSpeed = forwardSpeed
+        targetAngularVel = 0
+        targetTorque = 36000
     elseif isNeutral then
-        -- Neutral gear: free-rolling coasting even if W or S is pressed
         currentTargetSpeed = forwardSpeed
         targetAngularVel = 0
         targetTorque = 350
     elseif throttle > 0.05 then
         if forwardSpeed < -2.5 then
-            -- Braking from reverse
             currentTargetSpeed = 0
             targetAngularVel = 0
             targetTorque = 45000
         else
-            -- Smooth progressive acceleration (syncs to actual speed + gradual ramp)
             if currentTargetSpeed < forwardSpeed then
                 currentTargetSpeed = forwardSpeed
             end
             currentTargetSpeed = math.min(currentTargetSpeed + ACCEL_RATE * throttle * dt, MAX_FORWARD_SPEED)
             currentTargetSpeed = math.min(currentTargetSpeed, forwardSpeed + 14)
             targetAngularVel = currentTargetSpeed / WHEEL_RADIUS
-            -- Sporty responsive launch torque
             targetTorque = 13500 + (speedRatio * 6500)
         end
     elseif throttle < -0.05 then
         if forwardSpeed > 2.5 then
-            -- Progressive braking
             currentTargetSpeed = forwardSpeed
             targetAngularVel = 0
             targetTorque = 42000 * math.abs(throttle)
         else
-            -- Smooth reversing
             if currentTargetSpeed > forwardSpeed then
                 currentTargetSpeed = forwardSpeed
             end
@@ -153,7 +192,6 @@ RunService.RenderStepped:Connect(function(dt)
             targetTorque = 10000
         end
     else
-        -- Free-rolling coasting
         currentTargetSpeed = forwardSpeed
         targetAngularVel = 0
         targetTorque = 350
@@ -166,8 +204,8 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- 3. Subtle Drift Yaw Assist for smooth, controllable slides
-    if isDrifting and not isHandbrake and absSpeed > 15 and math.abs(currentSteer) > 0.1 then
+    -- 3. Subtle Drift Yaw Assist
+    if isDrifting and not isHandbrake and not isSpaceBraking and absSpeed > 15 and math.abs(currentSteer) > 0.1 then
         local currentAngVel = currentSeat.AssemblyAngularVelocity
         local desiredYaw = -currentSteer * 1.45 * math.clamp(absSpeed / 45, 0.3, 1.0)
         if forwardSpeed < 0 then desiredYaw = -desiredYaw end
