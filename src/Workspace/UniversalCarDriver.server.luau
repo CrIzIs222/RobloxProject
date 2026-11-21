@@ -5,7 +5,7 @@ local effects = car:FindFirstChild("Effects")
 local body = car:FindFirstChild("Body")
 local hl = body and body:FindFirstChild("headlights")
 local tl = body and body:FindFirstChild("tail_light")
-local beam = hl and hl:FindFirstChild("HeadlightBeam")
+local beam = car:FindFirstChild("HeadlightBeam", true)
 local promptLoc = seat and seat:FindFirstChild("PromptLocation")
 local prompt = promptLoc and promptLoc:FindFirstChildOfClass("ProximityPrompt")
 
@@ -27,6 +27,7 @@ local sndAccel = effects and effects:FindFirstChild("Accelerate")
 local sndStop = effects and effects:FindFirstChild("EngineStop")
 local sndDoor = effects and effects:FindFirstChild("OpenCloseDoor")
 local sndSwitch = effects and effects:FindFirstChild("LightSwitchSound")
+local sndTick = effects and effects:FindFirstChild("TurnTickSound")
 
 if sndIdle then sndIdle.Looped = true end
 if sndAccel then sndAccel.Looped = true end
@@ -44,20 +45,24 @@ local currentDriver = nil
 
 -- Light States
 local headlightsOn = false
-local turnSignalMode = "None"
+local turnSignalMode = "None" -- "None", "Left", "Right", "Hazard"
 local blinkState = false
 local blinkTimer = 0
 
-local stripFL = hl and hl:FindFirstChild("TurnSignalFL")
-local stripFR = hl and hl:FindFirstChild("TurnSignalFR")
-local stripRL = tl and tl:FindFirstChild("TurnSignalRL")
-local stripRR = tl and tl:FindFirstChild("TurnSignalRR")
+local stripFL = car:FindFirstChild("TurnSignalFL", true)
+local stripFR = car:FindFirstChild("TurnSignalFR", true)
+local stripRL = car:FindFirstChild("TurnSignalRL", true)
+local stripRR = car:FindFirstChild("TurnSignalRR", true)
 
 local function setHeadlights(on)
     headlightsOn = on
-    if hl then
+    if hl and not car.Name:match("blue") then
         hl.Material = on and Enum.Material.Neon or Enum.Material.SmoothPlastic
         hl.Color = on and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 85)
+    end
+    local hlg = car:FindFirstChild("headlight_glass", true)
+    if hlg then
+        hlg.Transparency = on and 0.25 or 0.5
     end
     if beam then
         beam.Enabled = on
@@ -65,6 +70,18 @@ local function setHeadlights(on)
     if tl then
         tl.Color = on and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(150, 20, 20)
     end
+    
+    -- Update resting rear turn signals if not currently indicating
+    if turnSignalMode == "None" or not blinkState then
+        local redTail = on and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(150, 20, 20)
+        if stripRL and (turnSignalMode ~= "Left" and turnSignalMode ~= "Hazard") then
+            stripRL.Color = redTail
+        end
+        if stripRR and (turnSignalMode ~= "Right" and turnSignalMode ~= "Hazard") then
+            stripRR.Color = redTail
+        end
+    end
+    
     if sndSwitch then sndSwitch:Play() end
     
     local player = currentDriver and game:GetService("Players"):GetPlayerFromCharacter(currentDriver)
@@ -74,32 +91,41 @@ local function setHeadlights(on)
 end
 
 local function setSignalVisuals(leftOn, rightOn)
-    local amberActive = Color3.fromRGB(255, 180, 0)
-    local amberIdleFront = Color3.fromRGB(120, 75, 10)
-    local amberIdleRear = Color3.fromRGB(120, 60, 10)
+    local amberActiveFront = Color3.fromRGB(255, 170, 0)
+    local amberActiveRear = Color3.fromRGB(255, 150, 0)
+    local whiteIdle = Color3.fromRGB(220, 220, 225)
+    local redTail = headlightsOn and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(150, 20, 20)
     
     -- Left Side (Driver Side)
     if stripFL then
-        stripFL.Transparency = leftOn and 0 or 0.85
-        stripFL.Color = leftOn and amberActive or amberIdleFront
-        if stripFL:FindFirstChild("AmberLight") then stripFL.AmberLight.Enabled = leftOn end
+        stripFL.Material = leftOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        stripFL.Color = leftOn and amberActiveFront or whiteIdle
+        stripFL.Transparency = leftOn and 0 or 0.4
+        local light = stripFL:FindFirstChild("AmberLight")
+        if light then light.Enabled = leftOn end
     end
     if stripRL then
-        stripRL.Transparency = leftOn and 0 or 0.85
-        stripRL.Color = leftOn and amberActive or amberIdleRear
-        if stripRL:FindFirstChild("AmberLight") then stripRL.AmberLight.Enabled = leftOn end
+        stripRL.Material = Enum.Material.Neon
+        stripRL.Color = leftOn and amberActiveRear or redTail
+        stripRL.Transparency = 0
+        local light = stripRL:FindFirstChild("AmberLight")
+        if light then light.Enabled = leftOn end
     end
     
     -- Right Side (Passenger Side)
     if stripFR then
-        stripFR.Transparency = rightOn and 0 or 0.85
-        stripFR.Color = rightOn and amberActive or amberIdleFront
-        if stripFR:FindFirstChild("AmberLight") then stripFR.AmberLight.Enabled = rightOn end
+        stripFR.Material = rightOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        stripFR.Color = rightOn and amberActiveFront or whiteIdle
+        stripFR.Transparency = rightOn and 0 or 0.4
+        local light = stripFR:FindFirstChild("AmberLight")
+        if light then light.Enabled = rightOn end
     end
     if stripRR then
-        stripRR.Transparency = rightOn and 0 or 0.85
-        stripRR.Color = rightOn and amberActive or amberIdleRear
-        if stripRR:FindFirstChild("AmberLight") then stripRR.AmberLight.Enabled = rightOn end
+        stripRR.Material = Enum.Material.Neon
+        stripRR.Color = rightOn and amberActiveRear or redTail
+        stripRR.Transparency = 0
+        local light = stripRR:FindFirstChild("AmberLight")
+        if light then light.Enabled = rightOn end
     end
 end
 
@@ -112,20 +138,32 @@ remote.OnServerEvent:Connect(function(player, action)
         setHeadlights(not headlightsOn)
     elseif action == "SignalLeft" then
         turnSignalMode = (turnSignalMode == "Left") and "None" or "Left"
-        blinkState = true
+        blinkState = (turnSignalMode == "Left")
         blinkTimer = 0
+        if sndTick and blinkState then
+            sndTick.PlaybackSpeed = 1.2
+            sndTick:Play()
+        end
         setSignalVisuals(turnSignalMode == "Left", false)
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     elseif action == "SignalRight" then
         turnSignalMode = (turnSignalMode == "Right") and "None" or "Right"
-        blinkState = true
+        blinkState = (turnSignalMode == "Right")
         blinkTimer = 0
+        if sndTick and blinkState then
+            sndTick.PlaybackSpeed = 1.2
+            sndTick:Play()
+        end
         setSignalVisuals(false, turnSignalMode == "Right")
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     elseif action == "Hazard" then
         turnSignalMode = (turnSignalMode == "Hazard") and "None" or "Hazard"
-        blinkState = true
+        blinkState = (turnSignalMode == "Hazard")
         blinkTimer = 0
+        if sndTick and blinkState then
+            sndTick.PlaybackSpeed = 1.2
+            sndTick:Play()
+        end
         setSignalVisuals(turnSignalMode == "Hazard", turnSignalMode == "Hazard")
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     end
@@ -179,44 +217,44 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
     else
         local charToTeleport = currentDriver
         currentDriver = nil
-        currentVelocity = 0
+        
         turnSignalMode = "None"
         setSignalVisuals(false, false)
-        setHeadlights(false)
         
-        if sndIdle then sndIdle:Stop() end
         if sndAccel then sndAccel:Stop() end
+        if sndIdle then sndIdle:Stop() end
         if sndStop then sndStop:Play() end
         if sndDoor then sndDoor:Play() end
-        if prompt then prompt.Enabled = true end
         
-        for _, m in ipairs(motors) do
-            if m then
-                m.MotorMaxTorque = 30000
-                m.AngularVelocity = 0
+        if charToTeleport then
+            local hrp = charToTeleport:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                task.delay(0.06, function()
+                    hrp.CFrame = seat.CFrame * CFrame.new(-5.5, 0.5, 0)
+                end)
             end
         end
-        if steer then steer.TargetPosition = 0 end
         
-        if charToTeleport and charToTeleport:FindFirstChild("HumanoidRootPart") then
-            task.delay(0.06, function()
-                if charToTeleport and charToTeleport:FindFirstChild("HumanoidRootPart") then
-                    local exitCFrame = seat.CFrame * CFrame.new(-5.5, 0.5, 0)
-                    charToTeleport:PivotTo(exitCFrame)
-                end
-            end)
-        end
+        task.delay(0.8, function()
+            if not seat.Occupant and prompt then
+                prompt.Enabled = true
+            end
+        end)
     end
 end)
 
--- Heartbeat Physics & Blink Loop
+-- Physics & lights loop
 game:GetService("RunService").Heartbeat:Connect(function(dt)
+    -- Blink timer
     if turnSignalMode ~= "None" then
         blinkTimer = blinkTimer + dt
         if blinkTimer >= 0.42 then
             blinkTimer = 0
             blinkState = not blinkState
-            
+            if sndTick then
+                sndTick.PlaybackSpeed = blinkState and 1.2 or 0.95
+                sndTick:Play()
+            end
             if turnSignalMode == "Left" then
                 setSignalVisuals(blinkState, false)
             elseif turnSignalMode == "Right" then
