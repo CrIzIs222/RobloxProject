@@ -66,11 +66,19 @@ remote.OnClientEvent:Connect(function(action, value)
     end
 end)
 
+headIcon.Active = true
+headIcon.InputBegan:Connect(function(input)
+    if not currentSeat then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        remote:FireServer("ToggleLights")
+    end
+end)
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not currentSeat then return end
     if UserInputService:GetFocusedTextBox() then return end
     
-    if input.KeyCode == Enum.KeyCode.L then
+    if input.KeyCode == Enum.KeyCode.L or input.KeyCode == Enum.KeyCode.H then
         remote:FireServer("ToggleLights")
     elseif input.KeyCode == Enum.KeyCode.Q then
         remote:FireServer("SignalLeft")

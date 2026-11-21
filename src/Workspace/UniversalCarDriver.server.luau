@@ -94,11 +94,17 @@ local function setHeadlights(on)
     headlightsOn = on
     if hl then
         hl.Material = on and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        hl.Color = on and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 85)
+        hl.Color = on and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(75, 80, 90)
+        for _, child in ipairs(hl:GetDescendants()) do
+            if child:IsA("SpotLight") then
+                child.Enabled = on
+            end
+        end
     end
     if beam then beam.Enabled = on end
     if tl then
-        tl.Color = on and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(150, 20, 20)
+        tl.Material = on and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        tl.Color = on and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(110, 20, 20)
     end
     if sndSwitch then sndSwitch:Play() end
     
