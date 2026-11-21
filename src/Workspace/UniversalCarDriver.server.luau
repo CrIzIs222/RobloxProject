@@ -1,3 +1,7 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local car = script.Parent
 local chassis = car:FindFirstChild("Chassis")
 local seat = car:FindFirstChildWhichIsA("VehicleSeat", true)
@@ -15,7 +19,7 @@ local promptDriver = promptLoc and promptLoc:FindFirstChildOfClass("ProximityPro
 local promptLocFR = seatFR and seatFR:FindFirstChild("PromptLocation")
 local promptPassenger = promptLocFR and promptLocFR:FindFirstChildOfClass("ProximityPrompt")
 
-local remote = game:GetService("ReplicatedStorage"):WaitForChild("CarControlRemote")
+local remote = ReplicatedStorage:WaitForChild("CarControlRemote")
 
 if not seat or not constraints then return end
 
@@ -46,22 +50,12 @@ local rearWheelR = srr and srr:FindFirstChild("Wheel")
 local smokeL = rearWheelL and rearWheelL:FindFirstChild("DriftSmoke")
 local smokeR = rearWheelR and rearWheelR:FindFirstChild("DriftSmoke")
 
-local isDrifting = false
 local defaultRearFriction = 2.0
-local driftRearFriction = 0.32
+local driftRearFriction = 0.35
 
--- Handbrake (P key)
-local isHandbrake = false
-
-local maxForwardSpeed = 75
-local maxReverseSpeed = 30
-local currentVelocity = 0
-
-local accelRate = 12
-local brakeRate = 45
-local coastRate = 10
-local defaultSteer = 0.55
-local driftSteer = 0.74
+local maxForwardSpeed = 82
+local isHandbrake = true
+car:SetAttribute("Handbrake", true)
 
 local currentDriver = nil
 local currentPassenger = nil
@@ -108,7 +102,7 @@ local function setHeadlights(on)
     end
     if sndSwitch then sndSwitch:Play() end
     
-    local player = currentDriver and game:GetService("Players"):GetPlayerFromCharacter(currentDriver)
+    local player = currentDriver and Players:GetPlayerFromCharacter(currentDriver)
     if player then remote:FireClient(player, "Headlights", on) end
 end
 
@@ -120,7 +114,6 @@ local function setSignalVisuals(leftOn, rightOn)
 end
 
 local function setDriftState(active)
-    isDrifting = active
     local friction = active and driftRearFriction or defaultRearFriction
     local fWeight = 3.0
     if rearWheelL then
@@ -133,8 +126,20 @@ local function setDriftState(active)
     if smokeR then smokeR.Enabled = active end
 end
 
+local function lockParkedWheels()
+    for _, m in ipairs(motors) do
+        if m then
+            m.MotorMaxTorque = 120000
+            m.AngularVelocity = 0
+        end
+    end
+    if steer then steer.TargetPosition = 0 end
+end
+
+lockParkedWheels()
+
 remote.OnServerEvent:Connect(function(player, action, value)
-    if not currentDriver or game:GetService("Players"):GetPlayerFromCharacter(currentDriver) ~= player then
+    if not currentDriver or Players:GetPlayerFromCharacter(currentDriver) ~= player then
         return
     end
     
@@ -174,17 +179,9 @@ remote.OnServerEvent:Connect(function(player, action, value)
         setDriftState(value == true)
     elseif action == "ToggleHandbrake" then
         isHandbrake = not isHandbrake
+        car:SetAttribute("Handbrake", isHandbrake)
         if sndSwitch then sndSwitch:Play() end
         remote:FireClient(player, "Handbrake", isHandbrake)
-        if isHandbrake then
-            currentVelocity = 0
-            for _, m in ipairs(motors) do
-                if m then
-                    m.MotorMaxTorque = 120000
-                    m.AngularVelocity = 0
-                end
-            end
-        end
     end
 end)
 
@@ -217,9 +214,10 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
         local char = occupant.Parent
         currentDriver = char
         isHandbrake = false
+        car:SetAttribute("Handbrake", false)
         if promptDriver then promptDriver.Enabled = false end
         
-        local player = game:GetService("Players"):GetPlayerFromCharacter(char)
+        local player = Players:GetPlayerFromCharacter(char)
         if player then
             remote:FireClient(player, "Handbrake", false)
             for _, part in ipairs(car:GetDescendants()) do
@@ -250,27 +248,25 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
     else
         local charToTeleport = currentDriver
         currentDriver = nil
-        currentVelocity = 0
         turnSignalMode = "None"
         isHandbrake = true
+        car:SetAttribute("Handbrake", true)
         setSignalVisuals(false, false)
         setHeadlights(false)
         setDriftState(false)
         
         if sndIdle then sndIdle:Stop() end
-        if sndAccel then sndAccel.Stop() end
+        if sndAccel then sndAccel:Stop() end
         if sndStop then sndStop:Play() end
         if sndDoor then sndDoor:Play() end
         if promptDriver then promptDriver.Enabled = true end
         
-        -- Lock wheels when parked
-        for _, m in ipairs(motors) do
-            if m then
-                m.MotorMaxTorque = 120000
-                m.AngularVelocity = 0
+        for _, part in ipairs(car:GetDescendants()) do
+            if part:IsA("BasePart") and not part.Anchored then
+                pcall(function() part:SetNetworkOwner(nil) end)
             end
         end
-        if steer then steer.TargetPosition = 0 end
+        lockParkedWheels()
         
         -- Smooth and safe exit teleportation outside beside driver door
         if charToTeleport and charToTeleport:FindFirstChild("HumanoidRootPart") then
@@ -299,7 +295,6 @@ if seatFR then
             if promptPassenger then promptPassenger.Enabled = true end
             if sndDoor then sndDoor:Play() end
             
-            -- Smooth and safe exit teleportation outside beside passenger door
             if charToExit and charToExit:FindFirstChild("HumanoidRootPart") then
                 task.delay(0.06, function()
                     if charToExit and charToExit:FindFirstChild("HumanoidRootPart") then
@@ -312,7 +307,7 @@ if seatFR then
     end)
 end
 
-game:GetService("RunService").Heartbeat:Connect(function(dt)
+RunService.Heartbeat:Connect(function(dt)
     if turnSignalMode ~= "None" then
         blinkTimer = blinkTimer + dt
         if blinkTimer >= 0.42 then
@@ -335,64 +330,15 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
     end
     
     if seat.Occupant then
-        local throttle = seat.ThrottleFloat
-        local steerFloat = seat.SteerFloat
-        
-        -- Steering angle (boosted during drift for counter-steering)
-        local activeMaxSteer = isDrifting and driftSteer or defaultSteer
-        if steer then
-            steer.TargetPosition = -steerFloat * activeMaxSteer
-        end
-        
-        if isHandbrake then
-            -- Handbrake engaged: locked in place
-            currentVelocity = 0
-            for _, m in ipairs(motors) do
-                if m then
-                    m.MotorMaxTorque = 120000
-                    m.AngularVelocity = 0
-                end
-            end
-        else
-            -- Normal driving
-            if throttle > 0 then
-                if currentVelocity < 0 then
-                    currentVelocity = math.min(currentVelocity + brakeRate * dt, 0)
-                else
-                    currentVelocity = math.min(currentVelocity + accelRate * dt, maxForwardSpeed)
-                end
-            elseif throttle < 0 then
-                if currentVelocity > 0 then
-                    currentVelocity = math.max(currentVelocity - brakeRate * dt, 0)
-                else
-                    currentVelocity = math.max(currentVelocity - (accelRate * 0.7) * dt, -maxReverseSpeed)
-                end
-            else
-                if currentVelocity > 0 then
-                    currentVelocity = math.max(currentVelocity - coastRate * dt, 0)
-                elseif currentVelocity < 0 then
-                    currentVelocity = math.min(currentVelocity + coastRate * dt, 0)
-                end
-            end
-            
-            local torque = (throttle ~= 0) and 40000 or 15000
-            for _, m in ipairs(motors) do
-                if m then
-                    m.MotorMaxTorque = torque
-                    m.AngularVelocity = currentVelocity
-                end
-            end
-        end
-        
-        local absSpeed = math.abs(currentVelocity)
+        local absSpeed = seat.AssemblyLinearVelocity.Magnitude
         local ratio = math.clamp(absSpeed / maxForwardSpeed, 0, 1)
+        local throttle = seat.ThrottleFloat
         
-        -- Dynamic Engine Sound modulation
         local targetAccelVol = 0.05
         local targetAccelPitch = 0.75
         local targetIdleVol = 0.35
         
-        if throttle ~= 0 and not isHandbrake then
+        if math.abs(throttle) > 0.05 and not isHandbrake then
             targetAccelVol = math.clamp(0.4 + ratio * 0.55, 0.4, 0.95)
             targetAccelPitch = 0.75 + (ratio * 0.9)
             targetIdleVol = math.clamp(0.35 - (ratio * 0.25), 0.1, 0.35)

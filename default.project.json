@@ -14,6 +14,9 @@
         "$className": "StarterPlayerScripts",
         "CustomPromptController": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/CustomPromptController.client.luau"
+        },
+        "LocalVehicleDriver": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/LocalVehicleDriver.client.luau"
         }
       }
     },
