@@ -90,6 +90,8 @@ RunService.RenderStepped:Connect(function(dt)
     local speedRatio = math.clamp(absSpeed / MAX_FORWARD_SPEED, 0, 1)
 
     local isHandbrake = currentCar:GetAttribute("Handbrake") == true
+    local isNeutral = currentCar:GetAttribute("Neutral") == true
+    local isBroken = currentCar:GetAttribute("Broken") == true
     local isDrifting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
         or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 
@@ -108,10 +110,15 @@ RunService.RenderStepped:Connect(function(dt)
     local targetAngularVel = 0
     local targetTorque = 350
 
-    if isHandbrake then
+    if isHandbrake or isBroken then
         currentTargetSpeed = 0
         targetAngularVel = 0
         targetTorque = 120000
+    elseif isNeutral then
+        -- Neutral gear: free-rolling coasting even if W or S is pressed
+        currentTargetSpeed = forwardSpeed
+        targetAngularVel = 0
+        targetTorque = 350
     elseif throttle > 0.05 then
         if forwardSpeed < -2.5 then
             -- Braking from reverse

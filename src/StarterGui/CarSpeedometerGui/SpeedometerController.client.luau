@@ -28,6 +28,7 @@ local currentSeat = nil
 local maxSpeed = 140
 local isDrifting = false
 local isHandbrake = false
+local isNeutral = false
 
 local dimColor = Color3.fromRGB(50, 55, 65)
 local activeColor = Color3.fromRGB(250, 250, 255)
@@ -58,10 +59,16 @@ remote.OnClientEvent:Connect(function(action, value)
     elseif action == "Handbrake" then
         isHandbrake = value
         if isHandbrake then
+            isNeutral = false
             if pLabel then pLabel.TextColor3 = redParkColor end
             rLabel.TextColor3 = dimColor
             nLabel.TextColor3 = dimColor
             dLabel.TextColor3 = dimColor
+        end
+    elseif action == "Neutral" then
+        isNeutral = value
+        if isNeutral then
+            isHandbrake = false
         end
     end
 end)
@@ -88,6 +95,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         remote:FireServer("Hazard")
     elseif input.KeyCode == Enum.KeyCode.P then
         remote:FireServer("ToggleHandbrake")
+    elseif input.KeyCode == Enum.KeyCode.N then
+        remote:FireServer("ToggleNeutral")
     elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
         isDrifting = true
         remote:FireServer("Drift", true)
@@ -204,6 +213,8 @@ RunService.RenderStepped:Connect(function(dt)
         
         if isHandbrake then
             setGear("P")
+        elseif isNeutral then
+            setGear("N")
         else
             if currentSeat.Throttle > 0 then
                 setGear("D")
