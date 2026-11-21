@@ -12,7 +12,7 @@ local MAX_REVERSE_SPEED = 26 -- studs/s (~42 km/h)
 local ACCEL_RATE = 23.0 -- studs/s^2 (~2.7 sec 0-100 km/h)
 local REVERSE_ACCEL_RATE = 13.0
 local COAST_DECEL_RATE = 4.2 -- studs/s^2 (gentle natural coasting ~6.7 km/h per sec)
-local BASE_SPRING_LEN = 2.45
+local BASE_SPRING_LEN = 2.85
 
 local currentSeat = nil
 local currentCar = nil
