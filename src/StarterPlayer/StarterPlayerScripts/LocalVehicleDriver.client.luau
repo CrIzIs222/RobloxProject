@@ -6,13 +6,16 @@ local player = Players.LocalPlayer
 
 local WHEEL_RADIUS = 1.5
 local MAX_FORWARD_SPEED = 82 -- studs/s (~131 km/h)
-local MAX_REVERSE_SPEED = 28 -- studs/s (~45 km/h)
+local MAX_REVERSE_SPEED = 26 -- studs/s (~42 km/h)
+local ACCEL_RATE = 13.5 -- studs/s^2 (~4.6 sec 0-100 km/h)
+local REVERSE_ACCEL_RATE = 10.0
 
 local currentSeat = nil
 local currentCar = nil
 local motors = {}
 local steerPrismatic = nil
 local currentSteer = 0
+local currentTargetSpeed = 0
 
 local function clearVehicle()
     currentSeat = nil
@@ -20,6 +23,7 @@ local function clearVehicle()
     motors = {}
     steerPrismatic = nil
     currentSteer = 0
+    currentTargetSpeed = 0
 end
 
 local function bindVehicle(seat)
@@ -43,7 +47,7 @@ local function bindVehicle(seat)
 
     for _, m in ipairs(motors) do
         if m then
-            m.MotorMaxAngularAcceleration = 180
+            m.MotorMaxAngularAcceleration = 18
         end
     end
     if steerPrismatic then
@@ -99,40 +103,53 @@ RunService.RenderStepped:Connect(function(dt)
         steerPrismatic.TargetPosition = -currentSteer * maxSteerAngle
     end
 
-    -- 2. Realistic Throttle, Braking, Reverse & Natural Coasting
+    -- 2. Realistic Progressive Acceleration, Braking, Reverse & Natural Coasting
     local throttle = currentSeat.ThrottleFloat
     local targetAngularVel = 0
-    local targetTorque = 400
+    local targetTorque = 350
 
     if isHandbrake then
+        currentTargetSpeed = 0
         targetAngularVel = 0
         targetTorque = 120000
     elseif throttle > 0.05 then
         if forwardSpeed < -2.5 then
             -- Braking from reverse
+            currentTargetSpeed = 0
             targetAngularVel = 0
-            targetTorque = 55000
+            targetTorque = 45000
         else
-            -- Forward acceleration (lead smoothly ahead of actual wheel speed)
-            local leadSpeed = math.min(forwardSpeed + 26 * throttle, MAX_FORWARD_SPEED)
-            targetAngularVel = leadSpeed / WHEEL_RADIUS
-            targetTorque = 24000 - (speedRatio * 9000)
+            -- Smooth progressive acceleration (syncs to actual speed + gradual ramp)
+            if currentTargetSpeed < forwardSpeed then
+                currentTargetSpeed = forwardSpeed
+            end
+            currentTargetSpeed = math.min(currentTargetSpeed + ACCEL_RATE * throttle * dt, MAX_FORWARD_SPEED)
+            currentTargetSpeed = math.min(currentTargetSpeed, forwardSpeed + 8)
+            targetAngularVel = currentTargetSpeed / WHEEL_RADIUS
+            -- Soft launch torque that builds smoothly without jerking
+            targetTorque = 8500 + (speedRatio * 6500)
         end
     elseif throttle < -0.05 then
         if forwardSpeed > 2.5 then
             -- Progressive braking
+            currentTargetSpeed = forwardSpeed
             targetAngularVel = 0
-            targetTorque = 50000 * math.abs(throttle)
+            targetTorque = 42000 * math.abs(throttle)
         else
-            -- Reversing
-            local leadSpeed = math.max(forwardSpeed - 16 * math.abs(throttle), -MAX_REVERSE_SPEED)
-            targetAngularVel = leadSpeed / WHEEL_RADIUS
-            targetTorque = 18000
+            -- Smooth reversing
+            if currentTargetSpeed > forwardSpeed then
+                currentTargetSpeed = forwardSpeed
+            end
+            currentTargetSpeed = math.max(currentTargetSpeed - REVERSE_ACCEL_RATE * math.abs(throttle) * dt, -MAX_REVERSE_SPEED)
+            currentTargetSpeed = math.max(currentTargetSpeed, forwardSpeed - 6)
+            targetAngularVel = currentTargetSpeed / WHEEL_RADIUS
+            targetTorque = 10000
         end
     else
         -- Free-rolling coasting
+        currentTargetSpeed = forwardSpeed
         targetAngularVel = 0
-        targetTorque = 400
+        targetTorque = 350
     end
 
     for _, m in ipairs(motors) do
