@@ -76,33 +76,21 @@ end
 
 -- Embedded Turn Signal Visuals in Headlights & Taillights
 local function setSignalVisuals(leftOn, rightOn)
-    local amberNeon = Color3.fromRGB(255, 175, 0)
-    local darkAmber = Color3.fromRGB(50, 40, 20)
-    local darkRed = Color3.fromRGB(60, 20, 20)
-    
     if turnFL then
-        turnFL.Material = leftOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        turnFL.Color = leftOn and amberNeon or darkAmber
-        turnFL.Transparency = leftOn and 0 or 0.6
+        turnFL.Transparency = leftOn and 0 or 1
         if turnFL:FindFirstChild("AmberLight") then turnFL.AmberLight.Enabled = leftOn end
     end
     if turnRL then
-        turnRL.Material = leftOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        turnRL.Color = leftOn and amberNeon or darkRed
-        turnRL.Transparency = leftOn and 0 or 0.6
+        turnRL.Transparency = leftOn and 0 or 1
         if turnRL:FindFirstChild("AmberLight") then turnRL.AmberLight.Enabled = leftOn end
     end
     
     if turnFR then
-        turnFR.Material = rightOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        turnFR.Color = rightOn and amberNeon or darkAmber
-        turnFR.Transparency = rightOn and 0 or 0.6
+        turnFR.Transparency = rightOn and 0 or 1
         if turnFR:FindFirstChild("AmberLight") then turnFR.AmberLight.Enabled = rightOn end
     end
     if turnRR then
-        turnRR.Material = rightOn and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        turnRR.Color = rightOn and amberNeon or darkRed
-        turnRR.Transparency = rightOn and 0 or 0.6
+        turnRR.Transparency = rightOn and 0 or 1
         if turnRR:FindFirstChild("AmberLight") then turnRR.AmberLight.Enabled = rightOn end
     end
 end

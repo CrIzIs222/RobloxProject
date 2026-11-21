@@ -46,8 +46,10 @@ remote.OnClientEvent:Connect(function(action, value)
     end
 end)
 
-UserInputService.InputBegan:Connect(function(input, processed)
-    if not currentSeat or processed then return end
+-- Fix: Do NOT check 'processed' so key E and Q are NEVER blocked by Roblox GUI
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not currentSeat then return end
+    if UserInputService:GetFocusedTextBox() then return end
     
     if input.KeyCode == Enum.KeyCode.L then
         remote:FireServer("ToggleLights")
