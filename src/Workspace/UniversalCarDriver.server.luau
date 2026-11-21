@@ -34,11 +34,9 @@ local sndStop = effects and effects:FindFirstChild("EngineStop")
 local sndDoor = effects and effects:FindFirstChild("OpenCloseDoor")
 local sndSwitch = effects and effects:FindFirstChild("LightSwitchSound")
 local sndTurnTick = effects and effects:FindFirstChild("TurnTickSound")
-local sndSkid = effects and effects:FindFirstChild("TireSkid")
 
 if sndIdle then sndIdle.Looped = true end
 if sndAccel then sndAccel.Looped = true end
-if sndSkid then sndSkid.Looped = true end
 
 -- Drift Components (Rear Wheels & Smoke)
 local srl = chassis and chassis:FindFirstChild("SuspensionRL")
@@ -130,17 +128,6 @@ local function setDriftState(active)
     end
     if smokeL then smokeL.Enabled = active end
     if smokeR then smokeR.Enabled = active end
-
-    if active then
-        if sndSkid and not sndSkid.IsPlaying then
-            sndSkid.Volume = 0.5
-            sndSkid:Play()
-        end
-    else
-        if sndSkid and sndSkid.IsPlaying then
-            sndSkid:Stop()
-        end
-    end
 end
 
 remote.OnServerEvent:Connect(function(player, action, value)
@@ -395,14 +382,6 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
         end
         if sndIdle and sndIdle.IsPlaying then
             sndIdle.Volume = sndIdle.Volume + (targetIdleVol - sndIdle.Volume) * math.clamp(dt * 4, 0, 1)
-        end
-        
-        -- Drift skid sound pitch & volume scaling
-        if isDrifting and sndSkid and sndSkid.IsPlaying then
-            local skidVol = math.clamp(0.2 + ratio * 0.5, 0.2, 0.7)
-            local skidPitch = math.clamp(0.85 + ratio * 0.4, 0.85, 1.25)
-            sndSkid.Volume = sndSkid.Volume + (skidVol - sndSkid.Volume) * math.clamp(dt * 6, 0, 1)
-            sndSkid.PlaybackSpeed = sndSkid.PlaybackSpeed + (skidPitch - sndSkid.PlaybackSpeed) * math.clamp(dt * 5, 0, 1)
         end
     end
 end)

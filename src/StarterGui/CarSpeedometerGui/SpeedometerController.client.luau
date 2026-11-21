@@ -23,27 +23,6 @@ local rightArrow = dashIcons:WaitForChild("RightArrow")
 local headIcon = dashIcons:WaitForChild("HeadlightIcon")
 local tickSound = gui:WaitForChild("CabinRelayTick")
 
--- Drift indicator badge on dashboard
-local driftBadge = frame:FindFirstChild("DriftBadge")
-if not driftBadge then
-    driftBadge = Instance.new("TextLabel")
-    driftBadge.Name = "DriftBadge"
-    driftBadge.Size = UDim2.new(0, 50, 0, 16)
-    driftBadge.Position = UDim2.new(0.5, -25, 0, 5)
-    driftBadge.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
-    driftBadge.BackgroundTransparency = 1
-    driftBadge.Font = Enum.Font.GothamBold
-    driftBadge.Text = "DRIFT"
-    driftBadge.TextColor3 = Color3.fromRGB(255, 170, 0)
-    driftBadge.TextSize = 12
-    driftBadge.TextTransparency = 1
-    driftBadge.Parent = frame
-    
-    local dCorner = Instance.new("UICorner")
-    dCorner.CornerRadius = UDim.new(0, 6)
-    dCorner.Parent = driftBadge
-end
-
 local currentSeat = nil
 local maxSpeed = 140
 local isDrifting = false
@@ -91,10 +70,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
         isDrifting = true
         remote:FireServer("Drift", true)
-        TweenService:Create(driftBadge, TweenInfo.new(0.15), {
-            TextTransparency = 0,
-            BackgroundTransparency = 0.6
-        }):Play()
     end
 end)
 
@@ -104,10 +79,6 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if isDrifting then
             isDrifting = false
             remote:FireServer("Drift", false)
-            TweenService:Create(driftBadge, TweenInfo.new(0.2), {
-                TextTransparency = 1,
-                BackgroundTransparency = 1
-            }):Play()
         end
     end
 end)
@@ -135,8 +106,6 @@ local function onSeated(active, seat)
         currentSeat = nil
         currentSignal = "None"
         isDrifting = false
-        driftBadge.TextTransparency = 1
-        driftBadge.BackgroundTransparency = 1
         leftArrow.TextColor3 = dimColor
         rightArrow.TextColor3 = dimColor
         headIcon.TextColor3 = dimColor
