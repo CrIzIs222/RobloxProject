@@ -27,7 +27,6 @@ local sndAccel = effects and effects:FindFirstChild("Accelerate")
 local sndStop = effects and effects:FindFirstChild("EngineStop")
 local sndDoor = effects and effects:FindFirstChild("OpenCloseDoor")
 local sndSwitch = effects and effects:FindFirstChild("LightSwitchSound")
-local sndTick = effects and effects:FindFirstChild("TurnTickSound")
 
 if sndIdle then sndIdle.Looped = true end
 if sndAccel then sndAccel.Looped = true end
@@ -49,10 +48,18 @@ local turnSignalMode = "None"
 local blinkState = false
 local blinkTimer = 0
 
-local turnFL = hl and hl:FindFirstChild("TurnSignalFL")
-local turnFR = hl and hl:FindFirstChild("TurnSignalFR")
-local turnRL = tl and tl:FindFirstChild("TurnSignalRL")
-local turnRR = tl and tl:FindFirstChild("TurnSignalRR")
+-- Internal lights inside headlight and taillight meshes
+local attFL = hl and hl:FindFirstChild("TurnAttFL")
+local lightFL = attFL and attFL:FindFirstChild("AmberLight")
+
+local attFR = hl and hl:FindFirstChild("TurnAttFR")
+local lightFR = attFR and attFR:FindFirstChild("AmberLight")
+
+local attRL = tl and tl:FindFirstChild("TurnAttRL")
+local lightRL = attRL and attRL:FindFirstChild("AmberLight")
+
+local attRR = tl and tl:FindFirstChild("TurnAttRR")
+local lightRR = attRR and attRR:FindFirstChild("AmberLight")
 
 local function setHeadlights(on)
     headlightsOn = on
@@ -74,25 +81,12 @@ local function setHeadlights(on)
     end
 end
 
--- Embedded Turn Signal Visuals in Headlights & Taillights
 local function setSignalVisuals(leftOn, rightOn)
-    if turnFL then
-        turnFL.Transparency = leftOn and 0 or 1
-        if turnFL:FindFirstChild("AmberLight") then turnFL.AmberLight.Enabled = leftOn end
-    end
-    if turnRL then
-        turnRL.Transparency = leftOn and 0 or 1
-        if turnRL:FindFirstChild("AmberLight") then turnRL.AmberLight.Enabled = leftOn end
-    end
+    if lightFL then lightFL.Enabled = leftOn end
+    if lightRL then lightRL.Enabled = leftOn end
     
-    if turnFR then
-        turnFR.Transparency = rightOn and 0 or 1
-        if turnFR:FindFirstChild("AmberLight") then turnFR.AmberLight.Enabled = rightOn end
-    end
-    if turnRR then
-        turnRR.Transparency = rightOn and 0 or 1
-        if turnRR:FindFirstChild("AmberLight") then turnRR.AmberLight.Enabled = rightOn end
-    end
+    if lightFR then lightFR.Enabled = rightOn end
+    if lightRR then lightRR.Enabled = rightOn end
 end
 
 remote.OnServerEvent:Connect(function(player, action)
@@ -107,21 +101,18 @@ remote.OnServerEvent:Connect(function(player, action)
         blinkState = true
         blinkTimer = 0
         setSignalVisuals(turnSignalMode == "Left", false)
-        if sndTick then sndTick:Play() end
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     elseif action == "SignalRight" then
         turnSignalMode = (turnSignalMode == "Right") and "None" or "Right"
         blinkState = true
         blinkTimer = 0
         setSignalVisuals(false, turnSignalMode == "Right")
-        if sndTick then sndTick:Play() end
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     elseif action == "Hazard" then
         turnSignalMode = (turnSignalMode == "Hazard") and "None" or "Hazard"
         blinkState = true
         blinkTimer = 0
         setSignalVisuals(turnSignalMode == "Hazard", turnSignalMode == "Hazard")
-        if sndTick then sndTick:Play() end
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     end
 end)
@@ -211,9 +202,6 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
         if blinkTimer >= 0.42 then
             blinkTimer = 0
             blinkState = not blinkState
-            if sndTick and seat.Occupant then
-                sndTick:Play()
-            end
             
             if turnSignalMode == "Left" then
                 setSignalVisuals(blinkState, false)

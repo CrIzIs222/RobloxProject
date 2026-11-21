@@ -21,6 +21,7 @@ local dashIcons = frame:WaitForChild("DashIcons")
 local leftArrow = dashIcons:WaitForChild("LeftArrow")
 local rightArrow = dashIcons:WaitForChild("RightArrow")
 local headIcon = dashIcons:WaitForChild("HeadlightIcon")
+local tickSound = gui:WaitForChild("CabinRelayTick")
 
 local currentSeat = nil
 local maxSpeed = 140
@@ -39,14 +40,21 @@ remote.OnClientEvent:Connect(function(action, value)
         headIcon.TextColor3 = value and blueLightColor or dimColor
     elseif action == "TurnSignal" then
         currentSignal = value
+        blinkState = (currentSignal ~= "None")
+        blinkTimer = 0
         if currentSignal == "None" then
             leftArrow.TextColor3 = dimColor
             rightArrow.TextColor3 = dimColor
+        else
+            -- First tick upon activation
+            if tickSound then
+                tickSound.PlaybackSpeed = 1.15
+                tickSound:Play()
+            end
         end
     end
 end)
 
--- Fix: Do NOT check 'processed' so key E and Q are NEVER blocked by Roblox GUI
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not currentSeat then return end
     if UserInputService:GetFocusedTextBox() then return end
@@ -119,11 +127,18 @@ end
 player.CharacterAdded:Connect(hookCharacter)
 
 RunService.RenderStepped:Connect(function(dt)
+    -- Authentic rhythmic "тик-так" relay sound in cabin
     if currentSignal ~= "None" then
         blinkTimer = blinkTimer + dt
         if blinkTimer >= 0.42 then
             blinkTimer = 0
             blinkState = not blinkState
+            
+            -- Alternate click pitch: 1.15 for "тик", 0.95 for "так"
+            if tickSound then
+                tickSound.PlaybackSpeed = blinkState and 1.15 or 0.95
+                tickSound:Play()
+            end
             
             if currentSignal == "Left" then
                 leftArrow.TextColor3 = blinkState and greenColor or dimColor
