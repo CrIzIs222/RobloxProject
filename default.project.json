@@ -8,10 +8,19 @@
         "$path": "src/StarterGui/CarSpeedometerGui"
       }
     },
-    "Workspace": {
-      "$className": "Workspace",
-      "UniversalCarDriver": {
-        "$path": "src/Workspace/UniversalCarDriver.server.luau"
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "VelocityCarServer": {
+        "$path": "src/ServerScriptService/VelocityCarServer.server.luau"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "VelocityCarControls": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/VelocityCarControls.client.luau"
+        }
       }
     }
   }
