@@ -27,6 +27,7 @@ local sndAccel = effects and effects:FindFirstChild("Accelerate")
 local sndStop = effects and effects:FindFirstChild("EngineStop")
 local sndDoor = effects and effects:FindFirstChild("OpenCloseDoor")
 local sndSwitch = effects and effects:FindFirstChild("LightSwitchSound")
+local sndTurnTick = effects and effects:FindFirstChild("TurnTickSound")
 
 if sndIdle then sndIdle.Looped = true end
 if sndAccel then sndAccel.Looped = true end
@@ -46,14 +47,30 @@ local turnSignalMode = "None"
 local blinkState = false
 local blinkTimer = 0
 
-local attFL = hl and hl:FindFirstChild("TurnAttFL")
-local lightFL = attFL and attFL:FindFirstChild("AmberLight")
-local attFR = hl and hl:FindFirstChild("TurnAttFR")
-local lightFR = attFR and attFR:FindFirstChild("AmberLight")
-local attRL = tl and tl:FindFirstChild("TurnAttRL")
-local lightRL = attRL and attRL:FindFirstChild("AmberLight")
-local attRR = tl and tl:FindFirstChild("TurnAttRR")
-local lightRR = attRR and attRR:FindFirstChild("AmberLight")
+-- Turn signal parts and lights embedded inside headlight and taillight housings
+local partFL = car:FindFirstChild("TurnSignalFL", true)
+local partFR = car:FindFirstChild("TurnSignalFR", true)
+local partRL = car:FindFirstChild("TurnSignalRL", true)
+local partRR = car:FindFirstChild("TurnSignalRR", true)
+
+local lightFL = partFL and partFL:FindFirstChildWhichIsA("PointLight")
+local lightFR = partFR and partFR:FindFirstChildWhichIsA("PointLight")
+local lightRL = partRL and partRL:FindFirstChildWhichIsA("PointLight")
+local lightRR = partRR and partRR:FindFirstChildWhichIsA("PointLight")
+
+local amberOffColor = Color3.fromRGB(110, 55, 0)
+local amberOnColor = Color3.fromRGB(255, 150, 0)
+
+local function updateSingleSignal(part, light, active)
+    if part then
+        part.Material = active and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        part.Color = active and amberOnColor or amberOffColor
+        part.Transparency = active and 0 or 0.6
+    end
+    if light then
+        light.Enabled = active
+    end
+end
 
 local function setHeadlights(on)
     headlightsOn = on
@@ -72,10 +89,10 @@ local function setHeadlights(on)
 end
 
 local function setSignalVisuals(leftOn, rightOn)
-    if lightFL then lightFL.Enabled = leftOn end
-    if lightRL then lightRL.Enabled = leftOn end
-    if lightFR then lightFR.Enabled = rightOn end
-    if lightRR then lightRR.Enabled = rightOn end
+    updateSingleSignal(partFL, lightFL, leftOn)
+    updateSingleSignal(partRL, lightRL, leftOn)
+    updateSingleSignal(partFR, lightFR, rightOn)
+    updateSingleSignal(partRR, lightRR, rightOn)
 end
 
 remote.OnServerEvent:Connect(function(player, action)
@@ -87,21 +104,33 @@ remote.OnServerEvent:Connect(function(player, action)
         setHeadlights(not headlightsOn)
     elseif action == "SignalLeft" then
         turnSignalMode = (turnSignalMode == "Left") and "None" or "Left"
-        blinkState = true
+        blinkState = (turnSignalMode == "Left")
         blinkTimer = 0
-        setSignalVisuals(turnSignalMode == "Left", false)
+        setSignalVisuals(blinkState, false)
+        if blinkState and sndTurnTick then
+            sndTurnTick.PlaybackSpeed = 1.15
+            sndTurnTick:Play()
+        end
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     elseif action == "SignalRight" then
         turnSignalMode = (turnSignalMode == "Right") and "None" or "Right"
-        blinkState = true
+        blinkState = (turnSignalMode == "Right")
         blinkTimer = 0
-        setSignalVisuals(false, turnSignalMode == "Right")
+        setSignalVisuals(false, blinkState)
+        if blinkState and sndTurnTick then
+            sndTurnTick.PlaybackSpeed = 1.15
+            sndTurnTick:Play()
+        end
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     elseif action == "Hazard" then
         turnSignalMode = (turnSignalMode == "Hazard") and "None" or "Hazard"
-        blinkState = true
+        blinkState = (turnSignalMode == "Hazard")
         blinkTimer = 0
-        setSignalVisuals(turnSignalMode == "Hazard", turnSignalMode == "Hazard")
+        setSignalVisuals(blinkState, blinkState)
+        if blinkState and sndTurnTick then
+            sndTurnTick.PlaybackSpeed = 1.15
+            sndTurnTick:Play()
+        end
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     end
 end)
@@ -189,6 +218,10 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
         if blinkTimer >= 0.42 then
             blinkTimer = 0
             blinkState = not blinkState
+            if sndTurnTick then
+                sndTurnTick.PlaybackSpeed = blinkState and 1.15 or 0.95
+                sndTurnTick:Play()
+            end
             if turnSignalMode == "Left" then
                 setSignalVisuals(blinkState, false)
             elseif turnSignalMode == "Right" then
