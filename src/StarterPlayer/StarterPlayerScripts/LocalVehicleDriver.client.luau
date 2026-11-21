@@ -11,26 +11,46 @@ local MAX_FORWARD_SPEED = 82 -- studs/s (~131 km/h)
 local MAX_REVERSE_SPEED = 26 -- studs/s (~42 km/h)
 local ACCEL_RATE = 23.0 -- studs/s^2 (~2.7 sec 0-100 km/h)
 local REVERSE_ACCEL_RATE = 13.0
+local BASE_SPRING_LEN = 2.45
 
 local currentSeat = nil
 local currentCar = nil
 local currentHumanoid = nil
+local motorFL, motorFR, motorRL, motorRR = nil, nil, nil, nil
 local motors = {}
+local springFL, springFR, springRL, springRR = nil, nil, nil, nil
 local steerPrismatic = nil
+
 local currentSteer = 0
 local currentTargetSpeed = 0
+local prevForwardSpeed = 0
+local currentPitch = 0
+local currentRoll = 0
 local wasSpaceBraking = false
+
+local function resetSprings()
+    if springFL then springFL.FreeLength = BASE_SPRING_LEN end
+    if springFR then springFR.FreeLength = BASE_SPRING_LEN end
+    if springRL then springRL.FreeLength = BASE_SPRING_LEN end
+    if springRR then springRR.FreeLength = BASE_SPRING_LEN end
+end
 
 local function clearVehicle()
     if currentHumanoid then
         currentHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
     end
+    resetSprings()
     currentSeat = nil
     currentCar = nil
+    motorFL, motorFR, motorRL, motorRR = nil, nil, nil, nil
     motors = {}
+    springFL, springFR, springRL, springRR = nil, nil, nil, nil
     steerPrismatic = nil
     currentSteer = 0
     currentTargetSpeed = 0
+    prevForwardSpeed = 0
+    currentPitch = 0
+    currentRoll = 0
     wasSpaceBraking = false
 end
 
@@ -45,7 +65,6 @@ local function bindVehicle(seat, humanoid)
     end
 
     if not seat:IsA("VehicleSeat") then
-        -- Passenger seat: only F-to-exit & jump-disable needed
         currentSeat = seat
         return
     end
@@ -58,12 +77,17 @@ local function bindVehicle(seat, humanoid)
     currentSeat = seat
     currentCar = car
     steerPrismatic = constraints:FindFirstChild("SteeringPrismatic")
-    motors = {
-        constraints:FindFirstChild("MotorFL"),
-        constraints:FindFirstChild("MotorFR"),
-        constraints:FindFirstChild("MotorRL"),
-        constraints:FindFirstChild("MotorRR"),
-    }
+
+    motorFL = constraints:FindFirstChild("MotorFL")
+    motorFR = constraints:FindFirstChild("MotorFR")
+    motorRL = constraints:FindFirstChild("MotorRL")
+    motorRR = constraints:FindFirstChild("MotorRR")
+    motors = {motorFL, motorFR, motorRL, motorRR}
+
+    springFL = constraints:FindFirstChild("StrutSpringFL")
+    springFR = constraints:FindFirstChild("StrutSpringFR")
+    springRL = constraints:FindFirstChild("StrutSpringRL")
+    springRR = constraints:FindFirstChild("StrutSpringRR")
 
     for _, m in ipairs(motors) do
         if m then
@@ -71,7 +95,7 @@ local function bindVehicle(seat, humanoid)
         end
     end
     if steerPrismatic then
-        steerPrismatic.Speed = 12
+        steerPrismatic.Speed = 14
         steerPrismatic.ServoMaxForce = 250000
     end
 end
@@ -135,12 +159,13 @@ RunService.RenderStepped:Connect(function(dt)
         remote:FireServer("SpaceBrake", isSpaceBraking)
     end
 
-    -- 1. Smooth Speed-Sensitive Steering
+    -- 1. Alive, Speed-Sensitive Steering with Fast Counter-Steer Response
     local rawSteer = currentSeat.SteerFloat
-    local steerRate = (math.abs(rawSteer) > 0.05) and 7.5 or 11.0
+    local isCounterSteering = (rawSteer * currentSteer) < -0.02
+    local steerRate = isCounterSteering and 14.5 or ((math.abs(rawSteer) > 0.05) and 8.5 or 11.5)
     currentSteer = currentSteer + (rawSteer - currentSteer) * math.clamp(dt * steerRate, 0, 1)
 
-    local maxSteerAngle = isDrifting and 0.55 or (0.55 - speedRatio * 0.27)
+    local maxSteerAngle = isDrifting and 0.55 or (0.55 - speedRatio * 0.25)
     if steerPrismatic then
         steerPrismatic.TargetPosition = -currentSteer * maxSteerAngle
     end
@@ -155,7 +180,6 @@ RunService.RenderStepped:Connect(function(dt)
         targetAngularVel = 0
         targetTorque = 120000
     elseif isSpaceBraking then
-        -- Smooth progressive brake on Spacebar
         currentTargetSpeed = forwardSpeed
         targetAngularVel = 0
         targetTorque = 36000
@@ -197,14 +221,60 @@ RunService.RenderStepped:Connect(function(dt)
         targetTorque = 350
     end
 
-    for _, m in ipairs(motors) do
-        if m then
-            m.MotorMaxTorque = targetTorque
-            m.AngularVelocity = targetAngularVel
+    -- 3. Active Torque Vectoring Differential & RWD-Biased Sports AWD Split
+    local diffRatio = currentSteer * 0.18 * math.clamp(speedRatio * 1.5, 0.2, 1.0)
+    local leftSpeedMult = 1 + diffRatio
+    local rightSpeedMult = 1 - diffRatio
+
+    if motorFL then
+        motorFL.MotorMaxTorque = targetTorque * 0.85
+        motorFL.AngularVelocity = targetAngularVel * leftSpeedMult
+    end
+    if motorFR then
+        motorFR.MotorMaxTorque = targetTorque * 0.85
+        motorFR.AngularVelocity = targetAngularVel * rightSpeedMult
+    end
+    if motorRL then
+        motorRL.MotorMaxTorque = targetTorque * 1.15
+        motorRL.AngularVelocity = targetAngularVel * leftSpeedMult
+    end
+    if motorRR then
+        motorRR.MotorMaxTorque = targetTorque * 1.15
+        motorRR.AngularVelocity = targetAngularVel * rightSpeedMult
+    end
+
+    -- 4. Realistic Active Suspension Weight Transfer (Pitch Squat/Dive & Cornering Body Roll)
+    local lonAccel = (forwardSpeed - prevForwardSpeed) / math.max(dt, 0.008)
+    prevForwardSpeed = forwardSpeed
+
+    local targetPitch = 0
+    if not isHandbrake and not isBroken and not isNeutral then
+        if isSpaceBraking and forwardSpeed > 3 then
+            targetPitch = -0.22 * math.clamp(absSpeed / 35, 0.3, 1.0)
+        elseif throttle > 0.05 and forwardSpeed >= -1 then
+            targetPitch = 0.16 * throttle * (1 - speedRatio * 0.45)
+        elseif throttle < -0.05 and forwardSpeed > 3 then
+            targetPitch = -0.24 * math.abs(throttle) * math.clamp(absSpeed / 35, 0.3, 1.0)
+        elseif throttle < -0.05 and forwardSpeed <= 1 then
+            targetPitch = -0.10 * math.abs(throttle)
+        else
+            targetPitch = math.clamp(lonAccel * 0.004, -0.12, 0.12)
         end
     end
 
-    -- 3. Instant Client-Side Tire Skid Trails
+    local latFactor = math.clamp(absSpeed / 32, 0, 1.15)
+    if forwardSpeed < -1 then latFactor = -latFactor end
+    local targetRoll = currentSteer * 0.22 * latFactor
+
+    currentPitch = currentPitch + (targetPitch - currentPitch) * math.clamp(dt * 8.0, 0, 1)
+    currentRoll = currentRoll + (targetRoll - currentRoll) * math.clamp(dt * 9.0, 0, 1)
+
+    if springFL then springFL.FreeLength = BASE_SPRING_LEN + currentPitch - currentRoll end
+    if springFR then springFR.FreeLength = BASE_SPRING_LEN + currentPitch + currentRoll end
+    if springRL then springRL.FreeLength = BASE_SPRING_LEN - (currentPitch * 0.85) - currentRoll end
+    if springRR then springRR.FreeLength = BASE_SPRING_LEN - (currentPitch * 0.85) + currentRoll end
+
+    -- 5. Instant Client-Side Tire Skid Trails
     local chassis = currentCar:FindFirstChild("Chassis")
     local fp = chassis and chassis:FindFirstChild("FloorPanel")
     if fp then
@@ -215,12 +285,14 @@ RunService.RenderStepped:Connect(function(dt)
         if tR then tR.Enabled = showTrail end
     end
 
-    -- 4. Subtle Drift Yaw Assist
-    if isDrifting and not isHandbrake and not isSpaceBraking and absSpeed > 15 and math.abs(currentSteer) > 0.1 then
+    -- 6. Lively Turn-In & Drift Yaw Dynamics
+    if not isHandbrake and not isSpaceBraking and absSpeed > 12 and math.abs(currentSteer) > 0.08 then
         local currentAngVel = currentSeat.AssemblyAngularVelocity
-        local desiredYaw = -currentSteer * 1.45 * math.clamp(absSpeed / 45, 0.3, 1.0)
-        if forwardSpeed < 0 then desiredYaw = -desiredYaw end
-        local blendedYaw = currentAngVel.Y + (desiredYaw - currentAngVel.Y) * math.clamp(dt * 3.5, 0, 1)
-        currentSeat.AssemblyAngularVelocity = Vector3.new(currentAngVel.X, blendedYaw, currentAngVel.Z)
+        if isDrifting then
+            local desiredYaw = -currentSteer * 1.55 * math.clamp(absSpeed / 42, 0.35, 1.05)
+            if forwardSpeed < 0 then desiredYaw = -desiredYaw end
+            local blendedYaw = currentAngVel.Y + (desiredYaw - currentAngVel.Y) * math.clamp(dt * 4.0, 0, 1)
+            currentSeat.AssemblyAngularVelocity = Vector3.new(currentAngVel.X, blendedYaw, currentAngVel.Z)
+        end
     end
 end)
