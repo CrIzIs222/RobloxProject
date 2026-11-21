@@ -204,7 +204,18 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- 3. Subtle Drift Yaw Assist
+    -- 3. Instant Client-Side Tire Skid Trails
+    local chassis = currentCar:FindFirstChild("Chassis")
+    local fp = chassis and chassis:FindFirstChild("FloorPanel")
+    if fp then
+        local showTrail = (isDrifting and absSpeed > 6) or (isSpaceBraking and absSpeed > 12)
+        local tL = fp:FindFirstChild("SkidTrailL")
+        local tR = fp:FindFirstChild("SkidTrailR")
+        if tL then tL.Enabled = showTrail end
+        if tR then tR.Enabled = showTrail end
+    end
+
+    -- 4. Subtle Drift Yaw Assist
     if isDrifting and not isHandbrake and not isSpaceBraking and absSpeed > 15 and math.abs(currentSteer) > 0.1 then
         local currentAngVel = currentSeat.AssemblyAngularVelocity
         local desiredYaw = -currentSteer * 1.45 * math.clamp(absSpeed / 45, 0.3, 1.0)
