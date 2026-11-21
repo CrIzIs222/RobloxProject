@@ -50,6 +50,9 @@ local isDrifting = false
 local defaultRearFriction = 2.0
 local driftRearFriction = 0.32
 
+-- Handbrake (P key)
+local isHandbrake = false
+
 local maxForwardSpeed = 75
 local maxReverseSpeed = 30
 local currentVelocity = 0
@@ -169,6 +172,19 @@ remote.OnServerEvent:Connect(function(player, action, value)
         remote:FireClient(player, "TurnSignal", turnSignalMode)
     elseif action == "Drift" then
         setDriftState(value == true)
+    elseif action == "ToggleHandbrake" then
+        isHandbrake = not isHandbrake
+        if sndSwitch then sndSwitch:Play() end
+        remote:FireClient(player, "Handbrake", isHandbrake)
+        if isHandbrake then
+            currentVelocity = 0
+            for _, m in ipairs(motors) do
+                if m then
+                    m.MotorMaxTorque = 120000
+                    m.AngularVelocity = 0
+                end
+            end
+        end
     end
 end)
 
@@ -200,7 +216,18 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
     if occupant and occupant:IsA("Humanoid") then
         local char = occupant.Parent
         currentDriver = char
+        isHandbrake = false
         if promptDriver then promptDriver.Enabled = false end
+        
+        local player = game:GetService("Players"):GetPlayerFromCharacter(char)
+        if player then
+            remote:FireClient(player, "Handbrake", false)
+            for _, part in ipairs(car:GetDescendants()) do
+                if part:IsA("BasePart") and not part.Anchored then
+                    pcall(function() part:SetNetworkOwner(player) end)
+                end
+            end
+        end
         
         if sndDoor then sndDoor:Play() end
         if sndStart then
@@ -220,33 +247,26 @@ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
             if sndIdle then sndIdle.Volume = 0.4; sndIdle:Play() end
             if sndAccel then sndAccel.Volume = 0.05; sndAccel:Play() end
         end
-        
-        local player = game:GetService("Players"):GetPlayerFromCharacter(char)
-        if player then
-            for _, part in ipairs(car:GetDescendants()) do
-                if part:IsA("BasePart") and not part.Anchored then
-                    pcall(function() part:SetNetworkOwner(player) end)
-                end
-            end
-        end
     else
         local charToTeleport = currentDriver
         currentDriver = nil
         currentVelocity = 0
         turnSignalMode = "None"
+        isHandbrake = true
         setSignalVisuals(false, false)
         setHeadlights(false)
         setDriftState(false)
         
         if sndIdle then sndIdle:Stop() end
-        if sndAccel then sndAccel:Stop() end
+        if sndAccel then sndAccel.Stop() end
         if sndStop then sndStop:Play() end
         if sndDoor then sndDoor:Play() end
         if promptDriver then promptDriver.Enabled = true end
         
+        -- Lock wheels when parked
         for _, m in ipairs(motors) do
             if m then
-                m.MotorMaxTorque = 30000
+                m.MotorMaxTorque = 120000
                 m.AngularVelocity = 0
             end
         end
@@ -324,31 +344,43 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
             steer.TargetPosition = -steerFloat * activeMaxSteer
         end
         
-        if throttle > 0 then
-            if currentVelocity < 0 then
-                currentVelocity = math.min(currentVelocity + brakeRate * dt, 0)
-            else
-                currentVelocity = math.min(currentVelocity + accelRate * dt, maxForwardSpeed)
-            end
-        elseif throttle < 0 then
-            if currentVelocity > 0 then
-                currentVelocity = math.max(currentVelocity - brakeRate * dt, 0)
-            else
-                currentVelocity = math.max(currentVelocity - (accelRate * 0.7) * dt, -maxReverseSpeed)
+        if isHandbrake then
+            -- Handbrake engaged: locked in place
+            currentVelocity = 0
+            for _, m in ipairs(motors) do
+                if m then
+                    m.MotorMaxTorque = 120000
+                    m.AngularVelocity = 0
+                end
             end
         else
-            if currentVelocity > 0 then
-                currentVelocity = math.max(currentVelocity - coastRate * dt, 0)
-            elseif currentVelocity < 0 then
-                currentVelocity = math.min(currentVelocity + coastRate * dt, 0)
+            -- Normal driving
+            if throttle > 0 then
+                if currentVelocity < 0 then
+                    currentVelocity = math.min(currentVelocity + brakeRate * dt, 0)
+                else
+                    currentVelocity = math.min(currentVelocity + accelRate * dt, maxForwardSpeed)
+                end
+            elseif throttle < 0 then
+                if currentVelocity > 0 then
+                    currentVelocity = math.max(currentVelocity - brakeRate * dt, 0)
+                else
+                    currentVelocity = math.max(currentVelocity - (accelRate * 0.7) * dt, -maxReverseSpeed)
+                end
+            else
+                if currentVelocity > 0 then
+                    currentVelocity = math.max(currentVelocity - coastRate * dt, 0)
+                elseif currentVelocity < 0 then
+                    currentVelocity = math.min(currentVelocity + coastRate * dt, 0)
+                end
             end
-        end
-        
-        local torque = (throttle ~= 0) and 40000 or 15000
-        for _, m in ipairs(motors) do
-            if m then
-                m.MotorMaxTorque = torque
-                m.AngularVelocity = currentVelocity
+            
+            local torque = (throttle ~= 0) and 40000 or 15000
+            for _, m in ipairs(motors) do
+                if m then
+                    m.MotorMaxTorque = torque
+                    m.AngularVelocity = currentVelocity
+                end
             end
         end
         
@@ -360,7 +392,7 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
         local targetAccelPitch = 0.75
         local targetIdleVol = 0.35
         
-        if throttle ~= 0 then
+        if throttle ~= 0 and not isHandbrake then
             targetAccelVol = math.clamp(0.4 + ratio * 0.55, 0.4, 0.95)
             targetAccelPitch = 0.75 + (ratio * 0.9)
             targetIdleVol = math.clamp(0.35 - (ratio * 0.25), 0.1, 0.35)

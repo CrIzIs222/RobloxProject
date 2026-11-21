@@ -11,6 +11,7 @@ local gui = script.Parent
 local frame = gui:WaitForChild("SpeedometerFrame")
 local speedLabel = frame:WaitForChild("SpeedValue")
 local transFrame = frame:WaitForChild("TransModes")
+local pLabel = transFrame:FindFirstChild("ModeP")
 local rLabel = transFrame:WaitForChild("ModeR")
 local nLabel = transFrame:WaitForChild("ModeN")
 local dLabel = transFrame:WaitForChild("ModeD")
@@ -26,9 +27,11 @@ local tickSound = gui:WaitForChild("CabinRelayTick")
 local currentSeat = nil
 local maxSpeed = 140
 local isDrifting = false
+local isHandbrake = false
 
 local dimColor = Color3.fromRGB(50, 55, 65)
 local activeColor = Color3.fromRGB(250, 250, 255)
+local redParkColor = Color3.fromRGB(255, 65, 65)
 local greenColor = Color3.fromRGB(0, 255, 130)
 local blueLightColor = Color3.fromRGB(0, 190, 255)
 
@@ -52,6 +55,14 @@ remote.OnClientEvent:Connect(function(action, value)
                 tickSound:Play()
             end
         end
+    elseif action == "Handbrake" then
+        isHandbrake = value
+        if isHandbrake then
+            if pLabel then pLabel.TextColor3 = redParkColor end
+            rLabel.TextColor3 = dimColor
+            nLabel.TextColor3 = dimColor
+            dLabel.TextColor3 = dimColor
+        end
     end
 end)
 
@@ -67,6 +78,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         remote:FireServer("SignalRight")
     elseif input.KeyCode == Enum.KeyCode.X then
         remote:FireServer("Hazard")
+    elseif input.KeyCode == Enum.KeyCode.P then
+        remote:FireServer("ToggleHandbrake")
     elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
         isDrifting = true
         remote:FireServer("Drift", true)
@@ -84,6 +97,9 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
 end)
 
 local function setGear(mode)
+    if pLabel then
+        pLabel.TextColor3 = (mode == "P") and redParkColor or dimColor
+    end
     rLabel.TextColor3 = (mode == "R") and activeColor or dimColor
     nLabel.TextColor3 = (mode == "N") and activeColor or dimColor
     dLabel.TextColor3 = (mode == "D") and activeColor or dimColor
@@ -92,6 +108,7 @@ end
 local function onSeated(active, seat)
     if active and seat and seat:IsA("VehicleSeat") then
         currentSeat = seat
+        isHandbrake = false
         frame.Visible = true
         frame.Position = UDim2.new(0.5, 0, 1, -12)
         frame.BackgroundTransparency = 1
@@ -106,9 +123,11 @@ local function onSeated(active, seat)
         currentSeat = nil
         currentSignal = "None"
         isDrifting = false
+        isHandbrake = false
         leftArrow.TextColor3 = dimColor
         rightArrow.TextColor3 = dimColor
         headIcon.TextColor3 = dimColor
+        if pLabel then pLabel.TextColor3 = dimColor end
         
         TweenService:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
             Position = UDim2.new(0.5, 0, 1, -12),
@@ -175,15 +194,19 @@ RunService.RenderStepped:Connect(function(dt)
         local ratio = math.clamp(kmh / maxSpeed, 0, 1)
         barFill.Size = UDim2.new(ratio, 0, 1, 0)
         
-        if currentSeat.Throttle > 0 then
-            setGear("D")
-        elseif currentSeat.Throttle < 0 then
-            setGear("R")
+        if isHandbrake then
+            setGear("P")
         else
-            if kmh > 3 then
+            if currentSeat.Throttle > 0 then
                 setGear("D")
+            elseif currentSeat.Throttle < 0 then
+                setGear("R")
             else
-                setGear("N")
+                if kmh > 3 then
+                    setGear("D")
+                else
+                    setGear("N")
+                end
             end
         end
     end
